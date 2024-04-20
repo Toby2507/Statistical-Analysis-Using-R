@@ -1,0 +1,616 @@
+---
+title: "STA 311"
+author: "Oluwatobi Salau"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Load Packages
+Using the `library` function, load your packages e.g `library(package_name)`
+
+```{r, message=F, warning=FALSE, echo=T}
+# Load libraries
+library(tidyverse) # plotting, cleaning, e.t.c
+library(broom)     # nice statistical outputs
+library(dplyr)     # for cleaner data manipulation
+library(ggplot2)   # for data visualization
+library(ggpubr)    # for data cleaning
+library(randtests) # for testing randomness
+library(BSDA)      # basic stas and data analysis
+library(car)       # for the levene test
+library(randtests) # for testing randomness
+```
+
+
+# QUESTION 1
+An experiment was done to compare four different methods of teaching the concept of percentage to sixth graders. Experimental units were 28 classes which were randomly assigned to the four methods, seven classes per method. A 45 item test was given to all classes. The average test scores of the classes are summarized in the table below. Show an
+R print out of the analysis. What can you conclude?  
+Case method: 14.59, 23.44, 25.53, 18.15, 20.82, 14.06, 14.26  
+Formula method: 20.27, 26.84, 14.71, 22.34, 19.49, 24.92, 20.20  
+Equation method: 27.82, 24.92, 28.68, 23.32, 32.85, 33.90, 23.42  
+Unitary analysis method: 33.16, 26.93, 30.43, 36.43, 37.04, 29.76, 33.88  
+
+## Solution
+**Ho**: There is no significant difference in the result obtained from each teaching concept    
+**Ha**: There is a significant difference in the result obtained from each teaching concept   
+alpha: 0.05/2 = 0.025  
+
+### Load the data
+```{r}
+Teaching_Method <- c(rep("Case Method", 7), rep("Formula Method", 7), rep("Equation Method", 7),
+        rep("Unitary Analysis Methdo", 7))
+score <- c(14.59, 23.44, 25.53, 18.15, 20.82, 14.06, 14.26,
+           20.27, 26.84, 14.71, 22.34, 19.49, 24.92, 20.20,
+           27.82, 24.92, 28.68, 23.32, 32.85, 33.90, 23.42,
+           33.16, 26.93, 30.43, 36.43, 37.04, 29.76, 33.88)
+```
+
+Using `tibble` function from dplyr we create a dataframe of the teaching methods and average scores. `glimpse` is then used to view a transposed version of the created dataframe.
+```{r}
+TM_Score <- tibble(Teaching_Method, score)
+glimpse(TM_Score)
+```
+
+### Plots
+```{r}
+ggplot(data = TM_Score, aes(x = Teaching_Method, y = score, color = Teaching_Method)) +
+  geom_boxplot() + labs(x = "Teaching Method", y = "Score", title = "Avg Test Score v. Teaching Method")
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of the scores from each teaching methods and the leveneTest is used to test the homogeneity of variance across teaching methods.
+```{r}
+# Testing normality for the score data for each teaching method
+grouped_data <- score %>% split(f = Teaching_Method)
+glimpse(grouped_data)
+for (group in names(grouped_data)) {
+  norm_test = shapiro.test(grouped_data[[group]])
+  print(group)
+  print(norm_test)
+}
+# Testing for the homogeneity of variance across the teaching methods
+TM_Score %>% leveneTest(score ~ Teaching_Method, data = .)
+```
+Both the Shapiro-Wilk test of normality of each group and the levene-test for homogeneity of variance resulted in p-values greater than the chosen significance level, indicating that the data-sets exhibit normal distribution and have homogeneous variances. Therefore, the assumptions necessary for the One-way ANOVA are met, and it is deemed appropriate for analysing the data.
+```{r}
+aov_model <- TM_Score %>% aov(score ~ Teaching_Method, data = .)
+aov_model %>% summary()
+```
+Creating a tidier and easier to read version of the ANOVA table
+```{r}
+tidy_aov <- tidy(aov_model)
+tidy_aov
+```
+
+### Conclusion
+Since the Pr `which is the probability of obtaining the observed F value of 15.86 if the null hypothesis is true` < alpha value, we reject Ho. Therefore, we can conclude that there is a significant difference in the result obtained from each Teaching Methods.   
+
+### Post-HOC
+Using the `TukeyHSD` function, we're able to determine where the significant difference lies among the Teaching Methods.
+```{r}
+aov_model %>% TukeyHSD()
+```
+The `TukeyHSD` test results indicate significant differences in mean values between most pairs of methods, as reflected by low adjusted p-values and confidence intervals that do not include zero. In contrast, the differences between the Formula Method and Case Method, Equation and Formula Method, as well as the difference between the Unitary Analysis Method and Equation Method, do not appear to be statistically significant.
+
+
+
+# QUESTION 2
+A study is conducted to investigate the relationship between cigarette smoking during pregnancy and the weights of newborn infants. The 15 women smokers who make up the sample kept accurate records of the number of cigarettes smoked during their pregnancies and the weights of their children were recorded at birth. The data are given below:   
+Women: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15   
+Cig. Per day: 12, 15, 35, 21, 20, 17, 19, 46, 20, 25,
+39, 25, 30, 27, 29  
+Baby’s Weight: 7.7, 8.1, 6.9, 8.2, 8.6, 8.3, 9.4, 7.8, 8.3, 5.2, 6.4, 7.9, 8.0
+By showing the R output of your analysis, determine whether level of cigarette smoking and weights of newborns are  negatively correlated for all smoking mothers.   
+
+## Solution
+**Ho**: true correlation is equal to 0   
+**Ha**: true correlation is not equal to 0    
+alpha: 0.05/2 = 0.025   
+
+### Load the data
+```{r}
+CPD <- c(12, 15, 35, 21, 20, 17, 19, 46, 20, 25, 39, 25, 30)
+BW <- c(7.7, 8.1, 6.9, 8.2, 8.6, 8.3, 9.4, 7.8, 8.3, 5.2, 6.4, 7.9, 8.0)
+```
+
+### Plots
+```{r}
+plot(CPD, BW, main = "scatter plot", xlab = "Cig per day", ylab = "Baby Weight", pch=19)
+abline(lm(CPD~BW), col = "red")
+```
+
+### Analysis
+```{r}
+cor.test(CPD, BW)
+```
+
+### Conclusion
+Since the p-value is greater than the alpha value, this suggests that there is not enough evidence to reject the null hypothesis which is further supported by the 95% confidence interval including 0. The correlation test result indicates a moderate negative relationship between level of cigarette smoking and weights of newborns, but it is not statistically different from 0 in this analysis.   
+
+
+
+# QUESTION 3
+A study of early childhood education asked kindergarten students to retell two fairy tales that had be read to them earlier in the week. The 10 children in the study included 5 high-progress readers and low-progress readers. Each child told two stories. Story 1 had been read to them; Story 2 had been read and also illustrated with pictures. An expert listened to a recording of the children and assigned a score for certain uses of language. Here are the
+data  
+Child: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10  
+Progress: high, high, high, high, high, low, low, low, low, low  
+Story 1 Score: 0.55, 0.57, 0.72, 0.70, 0.84, 0.40, 0.72, 0.00, 0.36, 0.55  
+Store 2 Score: 0.80, 0.82, 0.52, 0.74, 0.89, 0.77, 0.49, 0.66, 0.28, 0.38  
+Is there evidence that the scores of high-progress readers are higher than those of low-progress readers when they retell a story they have heard without pictures (Story 1)?
+Carry out the Wilcoxon rank sum test. State hypotheses and give the rank sum W for high progress readers, its P-value, and your conclusion. Do the t and Wilcoxon tests lead you to
+different conclusions?
+
+## Solution
+**Ho**: scores of High-progress readers = scores of low-progress readers    
+**Ha**: scores of High-progress readers > scores of low-progress readers    
+alpha: 0.05    
+
+### Load the data
+```{r}
+progress <- c(rep("high", 5), rep("low", 5))
+score <- c(0.55, 0.57, 0.72, 0.70, 0.84, 0.40, 0.72, 0.00, 0.36, 0.55)
+```
+
+### Analysis
+```{r}
+wilcox.test(score~progress, alt="greater")
+```
+```{r}
+t.test(score~progress, alt="greater")
+```
+
+### Conclusion
+The Wilcoxon rank sum test suggests evidence to reject the null hypothesis since the p-value is below the alpha value. The warning, however, indicates that the p-value might be imprecise due to tied data points between each group. Therefore, the scores of high-progress readers are higher than those of low progress readers when they retell a story they have heard without pictures.    
+
+The T-test also suggests evidence to reject the null hypothesis since the p-value is lower than the alpha value. Hence the Wilcoxon rank sum and T tests lead to the same conclusions.
+
+
+
+# QUESTION 4
+How often do nurses use latex gloves during procedures for which glove use is recommended? A matched pairs study observed nurses (without their knowledge) before and after a presentation on the importance of . glove use. Here are the proportions of procedures for which each nurse wore gloves:  
+Nurse: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14  
+Before: 0.500, 0.500, 1.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.167, 0.000, 0.000, 0.000, 1.000  
+After: 0.857, 0.833, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 0.667, 1.000, 0.750, 1.000, 1.000, 1.000  
+Is there a good evidence that glove use increased after the presentation?
+
+## Solution
+**Ho**: mean difference between glove use before and after presentation = 0    
+**Ha**: mean difference between glove use before and after presentation != 0  
+alpha: 0.05/2 = 0.025   
+
+### Load the data
+```{r}
+before <- c(0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.167, 0.0, 0.0, 0.0, 1.0)
+after <- c(0.857, 0.833, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.667, 1.0, 0.75, 1.0, 1.0, 1.0)
+```
+
+
+### Plots
+```{r}
+hist(before)
+hist(after)
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of both data set.
+```{r}
+shapiro.test(before)
+shapiro.test(after)
+```
+Given that the Shapiro-Wilk tests for normality yielded p-values less than the chosen alpha level (indicating that both the Saturday and Sunday evening attendance, do not follow a normal distribution), we proceed with a non-parametric test(Wilcoxon signed rank test) for comparing the mean difference between glove use before and after presentation.
+### Analysis
+```{r}
+wilcox.test(after, before, paired=T)
+```
+Due to the imprecise nature of the p-value and the warnings generated during the Wilcoxon signed rank test. I would be using the Paired sample t-test to confirm the conclusion.
+```{r}
+t.test(after, before, paired = T)
+```
+
+### Conclusion
+The Wilcoxon signed rank test suggests evidence to reject the null hypothesis since the p-value is below the alpha value. The warning, however, indicates that the p-value might be imprecise due to tied data points between each group. Therefore, there is good evidence that glove use increased after the presentation.  
+The Paired sample t-test also suggests evidence to reject the null hypothesis since the p-value is lower than the alpha value.
+
+
+
+# QUESTION 5
+You compared the number of tree species in plots of land in a tropical rainforest that had never been logged with similar plots nearby that had been logged 8 years earlier. The
+researchers also counted species in plots that had been logged just 1 year earlier. Here are the counts of species:  
+Plot Type:  
+Species Count Unlogged: 22, 18, 22, 20, 15, 21 13, 13, 19, 13, 19, 15  
+Logged 1 year ago: 11, 11, 14, 7, 18, 15 15, 12, 12, 2, 15, 8  
+Logged 8 years ago: 17, 4, 18, 14, 18, 15 15, 10, 12, 0, 0, 0    
+Compare the distribution of species count. State hypotheses, the test statistics and its P-value, and your conclusion
+
+## Solution
+**Ho**: There is no significant difference in the mean species count among the 3 groups   
+**Ha**: There is a significant difference in the mean species count amont the 3 groups  
+alpha: 0.05/2 = 0.025   
+
+### Load the data
+```{r}
+PlotType <- c(rep("Unlogged", 12), rep("Logged 1 year ago", 12), rep("Logged 8 years ago", 9))
+SpeciesCount <- c(22, 18, 22, 20, 15, 21, 13, 13, 19, 13, 19, 15,
+                  11, 11, 14, 7, 18, 15, 15, 12, 12, 2, 15, 8,
+                  17, 4, 18, 14, 18, 15, 15, 10, 12)
+PT_SC <- tibble(PlotType, SpeciesCount)
+glimpse(PT_SC)
+```
+
+### Plots
+```{r}
+ggplot(data = PT_SC, aes(x = PlotType, y = SpeciesCount, color = PlotType)) +
+  geom_boxplot() + labs(x = "Plot Type", y = "Species Count", title = "Species Count v. Plot Type")
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of the species count from each plot type and the levene-test is used to test the homogeneity of variance across plot types.
+```{r}
+# Testing normality for the species count from each plot type
+grouped_data <- SpeciesCount %>% split(f = PlotType)
+glimpse(grouped_data)
+for (group in names(grouped_data)) {
+  norm_test = shapiro.test(grouped_data[[group]])
+  print(group)
+  print(norm_test)
+}
+# Testing for the homogeneity of variance across plot types
+PT_SC %>% leveneTest(SpeciesCount ~ PlotType, data = .)
+```
+Both the Shapiro-Wilk test of normality of each group and the levene-test for homogeneity of variance resulted in p-values greater than the chosen significance level, indicating that the data-sets exhibit normal distribution and have homogeneous variances. Therefore, the assumptions necessary for the One-way ANOVA are met, and it is deemed appropriate for analysing the data.
+
+Creating the ANOVA model and generating a tidy summary
+```{r}
+aov_model_ptsc <- aov(SpeciesCount ~ PlotType, data = PT_SC)
+aov_model_ptsc %>% tidy()
+```
+
+### Conclusion
+Since the Pr `which is the probability of obtaining the observed F value of 6.195 if the null hypothesis is true` < alpha value, we reject Ho. Therefore, we can conclude that there is a significant difference in the mean species count amont the 3 groups.    
+
+## Post-HOC
+Using the `TukeyHSD` function, we're able to determine where the significant difference lies among the Plot Types.
+```{r}
+aov_model_ptsc %>% TukeyHSD()
+```
+The `TukeyHSD` test results indicate significant differences in mean values between Unlogged and Logged 1 year ago plot types, as reflected by low adjusted p-values and confidence intervals that do not include zero. In contrast, the differences between the Logged 8 years ago and Logged 1 year ago plot type, as well as the difference between the Unlogged and Logged 8 years ago plot type, do not appear to be statistically significant.   
+
+
+
+# QUESTION 6
+A “subliminal” message is below our threshold of awareness but may nonetheless influence us. Can subliminal messages help students learn math? A group of students who had failed
+the mathematics part of. the City University of New York Skills Assessment Test agreed to participate in a study to find out. All received a daily subliminal message, flashed on a screen.too rapidly to be consciously read. The treatment group of 10 students was exposed to “Each day I.am getting better in math.” The control group of 8 students was exposed to a neutral message, “People are walking on the street.” All students participated in a summer program designed to raise their math skills, and all took the assessment test again at the end of the program. Here are data on the subjects’ scores before and after the program.   
+Treatment group:   
+Pretest: 18, 18, 21, 18, 18, 20, 23, 23, 21, 17   
+Posttest: 24, 25, 33, 29, 33, 36, 34, 36, 34, 27  
+Control group:   
+Pretest: 18, 24, 20, 18, 24, 22, 15, 19  
+Posttest: 29, 29, 24, 26, 38, 27, 22, 31   
+Apply the Wilcoxon rank sum test to the posttest versus pretest differences. Note that there are some ties. What do you conclude?
+
+## Solution
+**Ho**: differences in posttest versus pretest scores of treatment group = that of control group   
+**Ha**: differences in posttest versus pretest scores of treatment group != that of control group  
+alpha: 0.05/2 = 0.025  
+
+### Load the data
+```{r}
+# Create the table
+data6 <- tibble(
+  Group = c(rep("Treatment", 10), rep("Control", 8)),
+  Pretest = c(18, 18, 21, 18, 18, 20, 23, 23, 21, 17, 18, 24, 20, 18, 24, 22, 15, 19),
+  Posttest = c(24, 25, 33, 29, 33, 36, 34, 36, 34, 27, 29, 29, 24, 26, 38, 27, 22, 31)
+)
+
+# Calculate the differences between the posttest and pretest
+data6$Difference <- data6$Posttest - data6$Pretest
+print(data6)
+```
+
+### Analysis
+```{r}
+wilcox.test(Difference~Group, data = data6)
+```
+
+### Conclusion
+The Wilcoxon rank sum test suggests evidence to not reject the null hypothesis since the p-value is greater the alpha value. The warning, however, indicates that the p-value might be imprecise due to tied data points between each group. Therefore, the differences in posttest versus pretest scores of the treatment group is equal to that of the control group.   
+
+
+
+# QUESTION 7
+The hippocampus has been suggested as playing and important role in memory storage and retrieval, and it is in hippocampal structures (particularly size) could play a role in schizophrenia. Scans on the brains of 15 schizophrenic individuals and their identical twins were obtained. They measured the volume of each brain’s left hippocampus.  
+Pair: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15  
+Normal: 1.94, 1.45, 1.56, 1.58, 2.06, 1.66, 1.75, 1.77, 1.78, 1.92, 1.25, 1.923, 2.04, 1.62, 2.08  
+Schizophrenic: 1.27, 1.63, 1.47, 1.39, 1.93, 1.26, 1.71, 1.67, 1.28, 1.85, 1.02, 1.34, 2.02, 1.59, 1.97   
+If you plot the difference scores for these 15 twin pairs, you will note that the distribution is far from normal. Compare the volume of the left hippocampus in twin pairs, one of whom is schizophrenic and one of whom is normal.
+
+## Solution
+**Ho**: There is no difference in the left hippocampal volumes in twin pairs, one whom is schizophrenic and one whom is normal     
+**Ha**: There is a difference in the left hippocampal volumes in twin pairs, one whom is schizophrenic and one whom is normal   
+alpha: 0.05/2 = 0.025   
+
+### Load the data
+```{r}
+# Create the table
+Normal = c(1.94, 1.45, 1.56, 1.58, 2.06, 1.66, 1.75, 1.77, 1.78, 1.92, 1.25, 1.93, 2.04, 1.62, 2.08)
+Schizophrenic = c(1.27, 1.63, 1.47, 1.39, 1.93, 1.26, 1.71, 1.67, 1.28, 1.85, 1.02, 1.34, 2.02, 1.59, 1.97)
+```
+
+### Plots
+```{r}
+hist(Normal)
+hist(Schizophrenic)
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of both data set.
+```{r}
+shapiro.test(Normal)
+shapiro.test(Schizophrenic)
+```
+Given that the Shapiro-Wilk tests for normality yielded p-values greater than the chosen alpha level (indicating that both the normal and schizophrenic datasets, follow a normal distribution), we proceed with a parametric test for comparing the volumes of the left hippocampus in the twin pairs
+```{r}
+t.test(Schizophrenic, Normal, paired = TRUE)
+```
+
+### Conclusion
+The p-value is less than the alpha value and the 95% confidence interval does not include 0, this indicates that there is strong evidence that there is a difference in the left hippocampal volumes in twin pairs, indicating a significant increase (0.1993) in the left hippocampal volume of the normal twin over the schizophrenic twin.  
+
+
+
+# QUESTION 8
+Give Kruskal-Wallis method of analysis for one way classification of data. Seasonal rainfall at two meteorological observations of a district is given below. Examine by using Run test and median test whether the rainfall of two observations can be considered as same.  
+Year: 1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995  
+A: 25.34, 49.35, 39.60, 42.90, 57.66, 24.89, 50.63, 38.47, 43.25, 50.83, 22.02  
+B: 24.31, 45.13, 42.83, 46.94, 57.50, 30.70, 48.37, 44.00, 50.00.  
+
+## Solution
+**Ho**: Rainfall of the 2 observations are the same   
+**Ha**: Rainfall of the 2 observations are not the same   
+alpha: 0.05/2 = 0.025  
+
+### Load the data
+```{r}
+rainfall_data <- tibble(
+  Observation = factor(c(rep("A", 11), rep("B", 10))),
+  Rainfall = c(25.34, 49.35, 39.60, 42.90, 57.66, 24.89, 50.63, 38.47, 43.25, 50.83, 22.02,
+               24.31, 45.13, 42.83, 46.94, 57.50, 30.70, 48.37, 38.45, 44.00, 50.00)
+)
+glimpse(rainfall_data)
+```
+
+### Plots
+```{r}
+ggplot(data = rainfall_data, aes(x = Observation, y = Rainfall, color = Observation)) +
+  geom_boxplot() + labs(x = "Meteorological Observations", y = "Seasonal Rainfall", title = "Meteorological Observations v. Seasonal Rainfall")
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of the species count from each plot type and the levene-test is used to test the homogeneity of variance across plot types.
+```{r}
+# Testing normality for the species count from each plot type
+grouped_data <- rainfall_data$Rainfall %>% split(f = rainfall_data$Observation)
+glimpse(grouped_data)
+for (group in names(grouped_data)) {
+  norm_test = shapiro.test(grouped_data[[group]])
+  print(group)
+  print(norm_test)
+}
+# Testing for the homogeneity of variance across plot types
+rainfall_data %>% leveneTest(Rainfall ~ Observation, data = .)
+```
+Both the Shapiro-Wilk test for normality of each observation group and the levene-test for homogeneity of variance resulted in p-values greater than the chosen significance level, indicating that the data-sets exhibit normal distribution and have homogeneous variances. Therefore, the assumptions necessary for the One-way ANOVA are met, and it is deemed appropriate for analysing the data.
+
+Creating the ANOVA model and generating a tidy summary
+```{r}
+aov_model_obrf <- aov(Rainfall ~ Observation, data = rainfall_data)
+aov_model_obrf %>% tidy()
+```
+
+Testing for randomness using the runs test
+```{r}
+run_test <- runs.test(rainfall_data$Rainfall, plot = TRUE)
+```
+```{r}
+run_test
+```
+### Conclusion
+Since the Pr `which is the probability of obtaining the observed F value of .2498 if the null hypothesis is true` > alpha value, we fail to reject Ho. Therefore, we can conclude that the rainfall of the 2 observations can be considered the same. The runs test has a p-value < the alpha value, hence we reject the null hypothesis, i.e the sequence of rainfall data exhibits randomness.  
+
+
+
+# QUESTION 9
+In vitro fertilization (IVF) data for 1992-2005 show the number of IVF treatment cycles, together with the number of singleton births, twin births and triplet and higher order
+births, for each year. The data are shown in the table below. For example, out of 18201 cycles of IVF treatment in year 1, there were 2373 (1712 + 591. +70) pregnancies leading
+to live births, of which 1712 were singleton births, 591 were twin births and 70 resulted in three or more babies.   
+Year: 1, 2, 3, 4, 5, 6. 7, 8, 9, 10, 11, 12, 13, 14  
+Number of treatment cycles: 18201, 21239, 23517, 27203, 25033, 23551, 22737, 22720, 22342, 22477, 21884, 23250, 23794  
+Singleton birth: 1712, 2244, 2391, 1589, 3015, 2718, 2812, 2945, 3083, 3116, 3284, 3371, 3460, 3626  
+Twin births: 591, 738, 837, 915, 1041, 888, 978, 1013, 1002, 1007, 1096, 1043, 1015, 1132  
+Triplet and higher order births: 70, 110, 123, 106, 123, 113, 113, 74, 81, 53, 53, 25,15, 15  
+Consider the probability that a treatment cycle gives rise to a singleton birth, determine whether or not the data are consistent with this probability being the same for all fourteen years.
+
+## Solution
+**Ho**: The probability that a treatment cycle gives rise to singleton birth is same across all 14 years    
+**Ha**: The probability that a treatment cycle gives rise to singleton birth is not same across all 14 years   
+alpha: 0.05/2 = 0.025  
+
+### Load the data
+```{r}
+ivf_data <- tibble(
+  Year = 1:14,
+  Treatment_Cycles = c(18201, 21239, 23517, 25414, 27203, 25033, 23551, 22737, 22720, 22342, 22477, 21884, 23250, 23794),
+  Singleton_Births = c(1712, 2244, 2391, 2589, 3015, 2781, 2812, 2945, 3083, 3116, 3284, 3371, 3460, 3626),
+  Twin_Births = c(591, 738, 837, 915, 1041, 888, 978, 1013, 1002, 1007, 1096, 1043, 1015, 1132),
+  Triplet_Higher_Births = c(70, 110, 123, 106, 123, 113, 113, 74, 81, 53, 53, 25, 15, 15)
+)
+head(ivf_data)
+```
+I'd be using the chi-squared goodness of fit test to compare the probability of a treatment cycle giving rise to a singleton birth across the fourteen years. Defining the expected probabilities assuming the same probabilities for each year
+```{r}
+expected_probs <- rep(1/length(ivf_data$Singleton_Births), length(ivf_data$Singleton_Births))
+print(expected_probs)
+```
+
+### Analysis
+```{r}
+chisq.test(ivf_data$Singleton_Births, p = expected_probs)
+```
+
+### Conclusion
+The chi-squared test reported a p-value less than 2.2e-16, suggesting a significant difference between the observed and expected frequencies. This extremely low p-value leads to the rejection of the null hypothesis. Therefore, based on the chi-square goodness-of-fit test, there is evidence to suggest that the probability of a treatment cycle leading to a singleton birth is not consistent across all thirteen years.    
+
+
+
+# QUESTION 10
+A quality control chart has been maintained for a measurable characteristic of items taken from a conveyor belt at a fixed point in a production line The measurements obtained today, in order of time, are as follows:   
+68.2 71.6 69.3 71.6 70.4 65.0 63.6 64.7 65.3 64.2 67.6 68.6 66.8 68.9 66.8 70.1  
+a. determine (using the runs test) whether consecutive
+observations suggest lack of stability in the production process.   
+b. Divide the time period into two equal parts and compare the means, using Student’s t-test. Do the data provide
+evidence of a shift in the mean level of the quality characteristics? Explain.
+
+## Solution
+### Load the data
+```{r}
+qc_observations <- c(68.2, 71.6, 69.3, 71.6, 70.4, 65.0, 63.6, 64.7,
+                     65.3, 64.2, 67.6, 68.6, 66.6, 68.9, 66.8, 70.1)
+```
+
+## A
+**Ho**: The consecutive observations exhibits randomness, suggesting a stability in the production process   
+**Ha**: The consecutive observations does not exhibit randomness, suggesting a lack of stability in the production process  
+alpha: 0.05/2 = 0.025  
+
+### Prepare the data
+To perform runs test of randomness, we first convert the data to binary (above or below the median)
+```{r}
+binary_data <- ifelse(qc_observations < median(qc_observations), 0, 1)
+print(binary_data)
+```
+
+### Analysis
+```{r}
+runs.test(binary_data)
+```
+
+### Conclusion
+The p-value obtained from the Runs Test is 0.3006, which is greater than the common significance level of 0.05. Therefore, based on the Runs Test, there is not enough evidence to reject the null hypothesis. The data do not provide sufficient evidence to conclude that there is non-randomness or lack of stability in the production process
+
+
+## B
+**Ho**: The mean level of the quality characteristic is the same in both halves of the time period  
+**Ha**: The mean level of the quality characteristic shifted between the 1st and 2nd halves of the time period   
+alpha: 0.05/2 = 0.025   
+
+### Prepare the data
+```{r}
+half_len <- length(qc_observations) %/% 2
+qc_observations_1 <- qc_observations[1:half_len]
+qc_observations_2 <- qc_observations[(half_len + 1):length(qc_observations)]
+print(qc_observations_1)
+print(qc_observations_2)
+```
+
+### Analysis
+As the observations are independent, a choice between the Student's t-test and Welch's t-test is essential. To determine the appropriate test, normality and homogeneity tests will be conducted on both datasets.
+```{r}
+shapiro.test(qc_observations_1)
+shapiro.test(qc_observations_2)
+var.test(qc_observations_1, qc_observations_2)
+```
+Both the Shapiro-Wilk test of normality and the F-test for homogeneity of variance resulted in p-values greater than the chosen significance level, indicating that both data-sets exhibit normal distribution and have homogeneous variances. Therefore, the assumptions necessary for the Student's t-test are met, and it is deemed appropriate for the comparison of means between the two data-sets.
+
+```{r}
+t.test(qc_observations_1, qc_observations_2, var.equal = TRUE)
+```
+
+### Conclusion
+Since the p-value is greater than the chosen significance level of 0.05, we do not have enough evidence to reject the null hypothesis. The 95% confidence interval (-2.066511, 3.641511) includes 0, further supporting the lack of evidence for a significant difference.   
+There is no significant evidence to suggest a shift in the mean level of the quality characteristics.   
+
+
+
+# QUESTION 11
+A government economist estimates that the median cost per pound of beef is N5.00. A sample of 22 livestock buyers shows the following cost per beef. Is there enough evidence to reject the economist’s hypothesis at alpha 0.10?  
+5.35, 5.16, 4.97, 4.83, 5.05, 5.19, 4.78, 4.93, 5.00, 5.42, 4.86, 5.05, 5.13, 5.00, 5.10, 5.27, 5.06, 5.25, 4.63, 5.16, 5.19, 5.16
+
+## Solution
+**Ho**: Median cost per pound of beef = 5   
+**Ha**: Median cost per pound of beef != 5   
+alpha: 0.10/2 = 0.05   
+assumed median = 5  
+
+### Load the data
+```{r}
+cost_per_beef <- c(5.35, 5.16, 4.97, 4.83, 5.05, 5.19, 4.78, 4.93, 5.00, 5.42, 4.86,
+                   5.05, 5.13, 5.00, 5.10, 5.27, 5.06, 5.25, 4.63, 5.16, 5.19, 5.16)
+```
+
+### Analysis
+```{r}
+SIGN.test(cost_per_beef, md=5)
+```
+
+### Conclusion
+The p-value of 0.1153 is greater than the chosen significance level indicating that there is not enough evidence to reject the null hypothesis. The 95% confidence interval for the median (4.99791, 5.16209) contains the value 5, suggesting that the data is consistent with a median of 5. Therefore, based on the one-sample Sign-Test, there is no significant evidence to reject the economist's hypothesis.
+
+
+
+# QUESTION 12
+Is there a difference in weekend movie attendance based on the evening in question? Eight small-town theaters were surveyed to see how many movie patrons were in attendance on
+Saturday evening and Sunday evening. Is there sufficient evidence to reject the claim that there is no difference in movie attendance for Saturday and Sunday evenings? Use a 10
+degree significance level.  
+Theater: A, B, C, D, E, F, G, H  
+Saturday: 210, 100, 150, 50, 195, 125, 120, 204  
+Sunday: 165, 42, 92, 60, 172, 100, 108, 136
+
+## Solution
+**Ho**: There is no significant difference in attendance on saturday and sunday evening      
+**Ha**: There is a significant difference in attendance on saturday and sunday evening      
+alpha: 0.10/2 = 0.05   
+
+### Load the data
+```{r}
+Saturday <- c(210, 100, 150, 50, 195, 125, 120, 204)
+Sunday <- c(165, 42, 92, 60, 172, 100, 108, 136)
+```
+
+### Plots
+```{r}
+hist(Saturday)
+hist(Sunday)
+```
+
+### Analysis
+To determine the suitable test to use (parametric or non-parametric), the shapiro-wilk test of normality is used to test the normality of both data set.
+```{r}
+shapiro.test(Saturday)
+shapiro.test(Sunday)
+```
+Given that the Shapiro-Wilk tests for normality yielded p-values greater than the chosen alpha level (indicating that both the Saturday and Sunday evening attendance, follow a normal distribution), we proceed with a parametric test for comparing the attendance of saturday and sunday evening
+### Analysis
+```{r}
+t.test(Saturday, Sunday, paired=T)
+```
+
+### Conclusion
+The p-value is less than the alpha value and the 95% confidence interval does not include 0, this indicates that there is strong evidence to reject the null hypothesis.
+i.e There is a significant difference in attendance on Saturday and Sunday evening.    
+
+
+
+
+
+
+
+
+
+
+
+
+
